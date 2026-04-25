@@ -15,6 +15,7 @@ var (
 	addForce       bool
 	addStay        bool
 	addExpires     string
+	addFrom        string
 )
 
 // addCmd represents the add command.
@@ -44,7 +45,13 @@ Use -i flag to interactively select a branch using fuzzy finder.`,
   gwq add --expires 7d feature/experiment
 
   # Create worktree expiring in 1 hour
-  gwq add --expires 1h hotfix/quick-test`,
+  gwq add --expires 1h hotfix/quick-test
+
+  # Create new branch from specific base branch
+  gwq add -b feature/api-v2 --from origin/develop
+
+  # Create at specific path from base branch
+  gwq add -b feature/api-v2 --from origin/develop ~/projects/myapp`,
 	RunE:              runAdd,
 	ValidArgsFunction: getBranchCompletions,
 }
@@ -57,12 +64,17 @@ func init() {
 	addCmd.Flags().BoolVarP(&addForce, "force", "f", false, "Overwrite existing directory")
 	addCmd.Flags().BoolVarP(&addStay, "stay", "s", false, "Stay in worktree directory after creation")
 	addCmd.Flags().StringVar(&addExpires, "expires", "", "Set expiration (e.g., 1d, 7d, 1h)")
+	addCmd.Flags().StringVar(&addFrom, "from", "", "Base branch to create new branch from (requires -b)")
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
 	return ExecuteWithArgs(true, func(ctx *CommandContext, cmd *cobra.Command, args []string) error {
 		var branch string
 		var path string
+
+		if addFrom != "" && addInteractive {
+			return fmt.Errorf("--from cannot be used with -i flag")
+		}
 
 		if addInteractive {
 			if len(args) > 0 {
@@ -100,7 +112,19 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		worktreePath, err := ctx.WorktreeManager.Add(branch, path, addBranch)
+		if addFrom != "" && !addBranch {
+			return fmt.Errorf("--from requires -b flag")
+		}
+
+		var (
+			worktreePath string
+			err          error
+		)
+		if addFrom != "" {
+			worktreePath, err = ctx.WorktreeManager.AddFromBase(branch, addFrom, path)
+		} else {
+			worktreePath, err = ctx.WorktreeManager.Add(branch, path, addBranch)
+		}
 		if err != nil {
 			return err
 		}
